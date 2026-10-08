@@ -19,6 +19,9 @@ services:
       # Terminal socket connects straight to the terminal service
       - key: VITE_TERMINAL_SERVICE_URL
         value: https://vertexai-hk-terminal.onrender.com
+      # Browser pings these on load so sleeping free services wake (gateway-to-service calls don't wake them)
+      - key: VITE_WAKE_URLS
+        value: https://vertexai-hk-auth.onrender.com/,https://vertexai-hk-project.onrender.com/,https://vertexai-hk-file.onrender.com/,https://vertexai-hk-ai.onrender.com/,https://vertexai-hk-payment.onrender.com/,https://vertexai-hk-terminal.onrender.com/health
     routes:
       - type: rewrite
         source: /api/*
