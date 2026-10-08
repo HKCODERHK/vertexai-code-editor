@@ -93,6 +93,11 @@ services:
         value: "22"
       - key: MONGODB_URI
         sync: false
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: vertexai-hk-redis
+          property: connectionString
 
   # ---------- File ----------
   - type: web
