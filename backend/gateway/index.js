@@ -35,7 +35,11 @@ const ensureAwake = (url) => {
     if (!url || Date.now() - (lastAwake[url] || 0) < 10 * 60 * 1000) return Promise.resolve()
     return pending[url] ||= (async () => {
         for (let i = 0; i < 15; i++) {
-            try { if ((await fetch(url, { signal: AbortSignal.timeout(10000) })).status < 500) { lastAwake[url] = Date.now(); return } } catch { }
+            try {
+                // Render serves an HTML "Application loading" page while a service wakes; only a real JSON reply means it's up
+                const r = await fetch(url === process.env.TERMINAL_SERVICE ? `${url}/health` : url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(15000) })
+                if (r.status < 500 && (r.headers.get("content-type") || "").includes("application/json")) { lastAwake[url] = Date.now(); return }
+            } catch { }
             await new Promise(r => setTimeout(r, 4000))
         }
     })().finally(() => { delete pending[url] })
