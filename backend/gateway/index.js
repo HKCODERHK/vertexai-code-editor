@@ -26,12 +26,29 @@ const server = http.createServer(app)
 // agar user auth service ke liye request bhejta hai toh gateway usko auth service ke route pe bhej dega aur auth service ka response user ko wapas bhej dega
 
 // similarly all other services ke liye bhi same kaam karega jaise ki project, file, ai, terminal, payment service ke liye bhi same kaam karega
-app.use("/api/auth", proxy(process.env.AUTH_SERVICE || "http://localhost:8001"))
-app.use("/api/project", protect, proxyWithHeader(process.env.PROJECT_SERVICE || "http://localhost:8002"))
-app.use("/api/file", protect, proxyWithHeader(process.env.FILE_SERVICE || "http://localhost:8003"))
-app.use("/api/ai", protect, proxyWithHeader(process.env.AI_SERVICE || "http://localhost:8004"))
-app.use("/api/terminal", protect, proxy(process.env.TERMINAL_SERVICE || "http://localhost:8005"))
-app.use("/api/payment", protect, proxyWithHeader(process.env.PAYMENT_SERVICE || "http://localhost:8006"))
+
+// Free hosting (Render) puts idle services to sleep. Wake them all together on any request,
+// and make a request wait until its own service is awake instead of failing with 502.
+const SERVICES = [process.env.AUTH_SERVICE, process.env.PROJECT_SERVICE, process.env.FILE_SERVICE, process.env.AI_SERVICE, process.env.TERMINAL_SERVICE, process.env.PAYMENT_SERVICE].filter(Boolean)
+const lastAwake = {}, pending = {}
+const ensureAwake = (url) => {
+    if (!url || Date.now() - (lastAwake[url] || 0) < 10 * 60 * 1000) return Promise.resolve()
+    return pending[url] ||= (async () => {
+        for (let i = 0; i < 15; i++) {
+            try { if ((await fetch(url, { signal: AbortSignal.timeout(10000) })).status < 500) { lastAwake[url] = Date.now(); return } } catch { }
+            await new Promise(r => setTimeout(r, 4000))
+        }
+    })().finally(() => { delete pending[url] })
+}
+app.use((req, res, next) => { SERVICES.forEach(s => ensureAwake(s)); next() })
+const wake = (url) => async (req, res, next) => { await ensureAwake(url); next() }
+
+app.use("/api/auth", wake(process.env.AUTH_SERVICE), proxy(process.env.AUTH_SERVICE || "http://localhost:8001"))
+app.use("/api/project", protect, wake(process.env.PROJECT_SERVICE), proxyWithHeader(process.env.PROJECT_SERVICE || "http://localhost:8002"))
+app.use("/api/file", protect, wake(process.env.FILE_SERVICE), proxyWithHeader(process.env.FILE_SERVICE || "http://localhost:8003"))
+app.use("/api/ai", protect, wake(process.env.AI_SERVICE), proxyWithHeader(process.env.AI_SERVICE || "http://localhost:8004"))
+app.use("/api/terminal", protect, wake(process.env.TERMINAL_SERVICE), proxy(process.env.TERMINAL_SERVICE || "http://localhost:8005"))
+app.use("/api/payment", protect, wake(process.env.PAYMENT_SERVICE), proxyWithHeader(process.env.PAYMENT_SERVICE || "http://localhost:8006"))
 app.get("/api/me", protect, getCurrentUser)
 
 app.get("/", (req, res) => {
@@ -59,4 +76,5 @@ server.on("upgrade",(req,socket,head)=>{
 
 server.listen(port,"0.0.0.0",() => {
     console.log(`gateway started at ${port}`)
+    SERVICES.forEach(s => ensureAwake(s))
 })
