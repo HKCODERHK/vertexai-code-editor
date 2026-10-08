@@ -1,0 +1,170 @@
+# Render Blueprint for VertexAI code editor — all free instances.
+# Secrets are NOT stored here: every `sync: false` value is entered once in the Render dashboard.
+# Free web services can't receive private-network traffic, so services talk over their public URLs.
+
+services:
+  # ---------- Frontend (static site) ----------
+  - type: web
+    name: vertexai-hk
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_FIREBASE_API_KEY
+        sync: false
+      # Same-origin API calls (rewritten to the gateway below) so login cookies work in every browser
+      - key: VITE_SERVER_URL
+        value: https://vertexai-hk.onrender.com
+      # Terminal socket connects straight to the terminal service
+      - key: VITE_TERMINAL_SERVICE_URL
+        value: https://vertexai-hk-terminal.onrender.com
+    routes:
+      - type: rewrite
+        source: /api/*
+        destination: https://vertexai-hk-gateway.onrender.com/api/*
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+  # ---------- Gateway ----------
+  - type: web
+    name: vertexai-hk-gateway
+    runtime: node
+    plan: free
+    rootDir: backend/gateway
+    buildCommand: npm ci --prefix .. && npm ci
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: FRONTEND_URL
+        value: https://vertexai-hk.onrender.com
+      - key: AUTH_SERVICE
+        value: https://vertexai-hk-auth.onrender.com
+      - key: PROJECT_SERVICE
+        value: https://vertexai-hk-project.onrender.com
+      - key: FILE_SERVICE
+        value: https://vertexai-hk-file.onrender.com
+      - key: AI_SERVICE
+        value: https://vertexai-hk-ai.onrender.com
+      - key: TERMINAL_SERVICE
+        value: https://vertexai-hk-terminal.onrender.com
+      - key: PAYMENT_SERVICE
+        value: https://vertexai-hk-payment.onrender.com
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: vertexai-hk-redis
+          property: connectionString
+
+  # ---------- Auth ----------
+  - type: web
+    name: vertexai-hk-auth
+    runtime: node
+    plan: free
+    rootDir: backend/services/auth
+    buildCommand: npm ci --prefix ../.. && npm ci
+    # Firebase key comes from a Render Secret File (never committed)
+    startCommand: "[ -f serviceAccountKey.json ] || cp /etc/secrets/serviceAccountKey.json ./serviceAccountKey.json; npm start"
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        sync: false
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: vertexai-hk-redis
+          property: connectionString
+
+  # ---------- Project ----------
+  - type: web
+    name: vertexai-hk-project
+    runtime: node
+    plan: free
+    rootDir: backend/services/project
+    buildCommand: npm ci --prefix ../.. && npm ci
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: MONGODB_URI
+        sync: false
+
+  # ---------- File ----------
+  - type: web
+    name: vertexai-hk-file
+    runtime: node
+    plan: free
+    rootDir: backend/services/file
+    buildCommand: npm ci --prefix ../.. && npm ci
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: MONGODB_URI
+        sync: false
+
+  # ---------- AI ----------
+  - type: web
+    name: vertexai-hk-ai
+    runtime: node
+    plan: free
+    rootDir: backend/services/ai
+    buildCommand: npm ci --prefix ../.. && npm ci
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: MONGODB_URI
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: FILE_SERVICE_URL
+        value: https://vertexai-hk-file.onrender.com
+      - key: AUTH_SERVICE
+        value: https://vertexai-hk-auth.onrender.com
+
+  # ---------- Payment ----------
+  - type: web
+    name: vertexai-hk-payment
+    runtime: node
+    plan: free
+    rootDir: backend/services/payment
+    buildCommand: npm ci --prefix ../.. && npm ci
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: MONGODB_URI
+        sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: AUTH_SERVICE
+        value: https://vertexai-hk-auth.onrender.com
+
+  # ---------- Terminal ----------
+  # Deliberately gets NO database or API secrets, so nothing sensitive is visible inside the shell.
+  - type: web
+    name: vertexai-hk-terminal
+    runtime: node
+    plan: free
+    rootDir: backend/services/terminal
+    buildCommand: npm ci --prefix ../.. && npm ci
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: FILE_SERVICE_URL
+        value: https://vertexai-hk-file.onrender.com
+
+  # ---------- Redis (Render Key Value, free) ----------
+  - type: keyvalue
+    name: vertexai-hk-redis
+    plan: free
+    ipAllowList: []   # internal connections only
